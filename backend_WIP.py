@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import math
-from scipy.signal import butter, filtfilt, sosfiltfilt
+from scipy.signal import butter, sosfiltfilt
 from datetime import datetime
 import scipy.signal as sig
 import pylsl
@@ -10,7 +10,8 @@ import collections
 from pynput.keyboard import Key, Controller
 
 max_len = 180 # modify the number of samples for analysis here
-
+threshold_after_first_peak = 60 # how many data points do we search after the first strong peak above threshold
+threshold = 100
 def mark_blink(peaks):
     """
     Applies a high pass filter to the voltage data in the dataframe.
@@ -92,32 +93,30 @@ def find_peak(data, threshold):
     peaks_2, _ = sig.find_peaks(data[1], height = threshold)
     return peaks_1, peaks_2
 
-# TODO: modify this function 
-def extract_points(peaks, data):
-    blink_features = []
-    for blink in blink_times:
-        duration = time[blink[1]] - time[blink[0]]
-        peak = eeg_data[blink[0]]
-        frequency = blink[1] - blink[0]
-        blink_features.append((duration, peak, frequency))
-    return blink_features
 
-
-def statistical_classification(peaks_1, peaks_2, threshold):
+def statistical_classification(peaks_1, peaks_2, threshold, data):
     # peaks_1, peaks_2 stores the indecies of the array, in which indecies a peak occurs
     peaks_1 = np.array(peaks_1)
     peaks_2 = np.array(peaks_2)
-    max_ch1 = np.argmax(peaks_1)
-    max_ch2 = np.argmax(peaks_2)
+    # store the peak and its respective index into a a list of tuple
+    data_ch1 = [(data[0][i], i) for i in peaks_1]
+    data_ch2 = [(data[1][i], i) for i in peaks_2]
+    # find the maximum of the the value and return index of the peak in this list of tuple
+    max_ch1_idx = np.argmax(data_ch1)[0]
+    max_ch2_idx = np.argmax(data_ch2)[0]
+    # use the peak index to find the initial index of the peak in the data
+    ch1_idx = data_ch1[max_ch1_idx][1]
+    ch2_idx = data_ch2[max_ch2_idx][1]
 
-    if peaks_1[max_ch1] >= threshold:
-        next_peak = np.argmax(peaks_1[max_ch1 : np.min(max_ch1 + 60, len(peaks_1))])
-        if peaks_1[next_peak] >= threshold:
+    # look for the biggest peak and check the peak right after it is above threshold or not 
+    if data[ch1_idx] >= threshold:
+        next_peak = np.argmax(data[ch1_idx : np.min(ch1_idx+threshold_after_first_peak, len(data))])
+        if data[next_peak] >= threshold:
             return 1
-        
-    if peaks_2[max_ch2] >= threshold:
-        next_peak = np.argmax(peaks_2[max_ch2 : np.min(max_ch2 + 60, len(peaks_2))])
-        if peaks_2[next_peak] >= threshold:
+    # look for the biggest peak and check the peak right after it is above threshold or not 
+    if data[ch2_idx] >= threshold:
+        next_peak = np.argmax(data[ch2_idx : np.min(ch2_idx+threshold_after_first_peak, len(data))])
+        if data[next_peak] >= threshold:
             return 1
     
     return 0
@@ -132,11 +131,11 @@ def lsl_inlet(name):
 
 def main():
     terminate_backend = False
-    store_data = False
-    send_result = False
     keyboard = Controller() # setup virtual keyboard
     # Wait for a marker, then start recording EEG data
     data = collections.deque(maxlen=max_len) # fast datastructure for appending/popping in either direction
+    #subject_threshold = pd.read_csv('Subject_1_average_threashold.csv')
+    #max_threshold = subject_threshold['']
     
     print('main function started')
     while True and terminate_backend == False:
@@ -149,10 +148,7 @@ def main():
             #------code starts here------#
             data_processed = invert_data(data)
             peaks_1, peaks_2 = find_peak(data_processed)
-            fp_1 = mark_blink(peaks_1)
-            fp_2 = mark_blink(peaks_2)
-            
-            label = statistical_classification(peaks_1, peaks_2, 250)
+            label = statistical_classification(peaks_1, peaks_2, 250, data_processed)
             # if it returns 1, it will press the spacebar
             if label == 1: # some function that return label of the data
                 keyboard.press(Key.space)
