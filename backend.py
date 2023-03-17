@@ -11,7 +11,7 @@ from pynput.keyboard import Key, Controller
 
 max_len = 180 # modify the number of samples for analysis here
 threshold_after_first_peak = 60 # how many data points do we search after the first strong peak above threshold
-threshold = 100
+threshold = 0
 def mark_blink(peaks):
     """
     Applies a high pass filter to the voltage data in the dataframe.
@@ -91,6 +91,7 @@ def invert_data(data):
 def find_peak(data, threshold):
     peaks_1, _ = sig.find_peaks(data[0], height = threshold)
     peaks_2, _ = sig.find_peaks(data[1], height = threshold)
+    print(peaks_1)
     return peaks_1, peaks_2
 
 
@@ -98,9 +99,11 @@ def statistical_classification(peaks_1, peaks_2, threshold, data):
     # peaks_1, peaks_2 stores the indecies of the array, in which indecies a peak occurs
     peaks_1 = np.array(peaks_1)
     peaks_2 = np.array(peaks_2)
+    print(peaks_1)
     # store the peak and its respective index into a a list of tuple
     data_ch1 = [(data[0][i], i) for i in peaks_1]
     data_ch2 = [(data[1][i], i) for i in peaks_2]
+    print(data_ch1)
     # find the maximum of the the value and return index of the peak in this list of tuple
     max_ch1_idx = np.argmax(data_ch1)[0]
     max_ch2_idx = np.argmax(data_ch2)[0]
@@ -124,12 +127,16 @@ def statistical_classification(peaks_1, peaks_2, threshold, data):
 def lsl_inlet(name):
     inlet = None
     tries = 0
-    info = pylsl.resolve_stream('name', name)
+    print('before resolve stream')
+    info = pylsl.resolve_stream('type', 'EEG')
+    # error
+    print('enter lsl, before inlet')
     inlet = pylsl.stream_inlet(info[0], recover = False)
     print(f'backend has received the {info[0].type()} inlet.')
     return inlet
 
 def main():
+    print("Enter main")
     terminate_backend = False
     keyboard = Controller() # setup virtual keyboard
     # Wait for a marker, then start recording EEG data
@@ -144,15 +151,17 @@ def main():
         if eeg is not None:
             data.append(eeg)
         if len(data) == max_len:
+            print(data)
             # classify this chunk
             #------code starts here------#
             data_processed = invert_data(data)
-            peaks_1, peaks_2 = find_peak(data_processed)
+            peaks_1, peaks_2 = find_peak(data_processed, threshold)
             label = statistical_classification(peaks_1, peaks_2, 250, data_processed)
             # if it returns 1, it will press the spacebar
             if label == 1: # some function that return label of the data
                 keyboard.press(Key.space)
-                keyboard.release(Key.space)   
+                keyboard.release(Key.space)  
+                print("jump!")
              # otherwise do nothing
             data = collections.deque(maxlen=max_len)
 
@@ -160,6 +169,7 @@ def main():
 eeg_in = None
 
 if __name__ == "__main__":
+    print("Hello")
     # Initialize our streams
     eeg_in = lsl_inlet('dino_EEG')
     # Run out main function
