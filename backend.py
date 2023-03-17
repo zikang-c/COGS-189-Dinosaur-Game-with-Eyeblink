@@ -9,8 +9,8 @@ import pylsl
 import collections
 from pynput.keyboard import Key, Controller
 
-max_len = 180 # modify the number of samples for analysis here
-threshold_after_first_peak = 60 # how many data points do we search after the first strong peak above threshold
+max_len = 500# modify the number of samples for analysis here
+threshold_after_first_peak = 100 # how many data points do we search after the first strong peak above threshold
 subject = 'Filtered_Subject_1\Subject_1_average_threashold.csv'
 
 def mark_blink(peaks):
@@ -101,29 +101,50 @@ def find_peak(data, threshold):
 
 def statistical_classification(peaks_1, peaks_2, threshold, data):
     # peaks_1, peaks_2 stores the indecies of the array, in which indecies a peak occurs
-    peaks_1 = np.array(peaks_1)
-    peaks_2 = np.array(peaks_2)
+    # peaks_1 = np.array(peaks_1)
+    # peaks_2 = np.array(peaks_2)
+    if len(peaks_1) == 0 or len(peaks_2) == 0:
+        return 0
     print("peaks_1 in statistical_classification: ", peaks_1)
     # store the peak and its respective index into a a list of tuple
     data_ch1 = [(data[0][i], i) for i in peaks_1]
     data_ch2 = [(data[1][i], i) for i in peaks_2]
+    data_ch1 = np.array(data_ch1)
+    data_ch2 = np.array(data_ch2)
     print("data_ch1 in statistical_classification: ", data_ch1)
+    print("data_ch2 in statistical_classification: ", data_ch2)
     # find the maximum of the the value and return index of the peak in this list of tuple
-    max_ch1_idx = np.argmax(data_ch1)[0]
-    max_ch2_idx = np.argmax(data_ch2)[0]
-    # use the peak index to find the initial index of the peak in the data
-    ch1_idx = data_ch1[max_ch1_idx][1]
-    ch2_idx = data_ch2[max_ch2_idx][1]
+    
+    max_ch1_idx = np.argmax(data_ch1[:,0])
 
+   
+    max_ch2_idx = np.argmax(data_ch2[:,0])
+    # max_ch1_idx = np.argmax([data_ch1[0]])
+    # max_ch2_idx = np.argmax([data_ch2[0]])
+    # use the peak index to find the initial index of the peak in the data
+    print(max_ch1_idx)
+    print(len(data_ch1))
+    print(data_ch1[max_ch1_idx])
+    ch1_idx = int(data_ch1[max_ch1_idx][1])
+    ch2_idx = int(data_ch2[max_ch2_idx][1])
+    print("ch1_idx is", ch1_idx)
+    #print("data is", data)
     # look for the biggest peak and check the peak right after it is above threshold or not 
-    if data[ch1_idx] >= threshold[0]:
-        next_peak = np.argmax(data[ch1_idx : np.min(ch1_idx+threshold_after_first_peak, len(data))])
-        if data[next_peak] >= threshold[0]:
+    if data[0][ch1_idx] >= threshold[0]:
+        print("start idx is ", ch1_idx)
+        
+        print("length of data[0]", len(data[0]))
+        end_idx = min(ch1_idx+threshold_after_first_peak, len(data[0]))
+        print("end_idx is", end_idx)
+        print(data[0][ch1_idx : end_idx])
+        next_peak = np.argmax(data[0][ch1_idx : end_idx]) + ch1_idx
+        print("the peak after tha strongest peak is ", data[0][next_peak])
+        if data[0][next_peak] >= 50:
             return 1
     # look for the biggest peak and check the peak right after it is above threshold or not 
-    if data[ch2_idx] >= threshold[1]:
-        next_peak = np.argmax(data[ch2_idx : np.min(ch2_idx+threshold_after_first_peak, len(data))])
-        if data[next_peak] >= threshold[1]:
+    if data[1][ch2_idx] >= threshold[1] - 20:
+        next_peak = np.argmax(data[1][ch2_idx : min(ch2_idx+threshold_after_first_peak, len(data[1]))])
+        if data[1][next_peak] >= 50: 
             return 1
     return 0
 
@@ -142,7 +163,7 @@ def filter(data):
     data[0] = sosfiltfilt(a, data[0])
     data[1] = sosfiltfilt(a, data[1])
     return
-
+ 
 
 def lsl_inlet(name):
     inlet = None
@@ -163,8 +184,9 @@ def main():
     data = collections.deque(maxlen=max_len) # fast datastructure for appending/popping in either direction
     subject_threshold = pd.read_csv(subject)
     # threshold <- [average max-threash of channel 1, average max-threash of channel 2]
-    threshold = [-subject_threshold.iloc[0, 0], -subject_threshold.iloc[0, 1]]
-    
+    # threshold = [-subject_threshold.iloc[0, 0], -subject_threshold.iloc[0, 1]]
+    threshold = [120, 120]
+    print(threshold)
     print('main function started')
     while True and terminate_backend == False:
         # Constantly check for a marker
@@ -172,11 +194,13 @@ def main():
         if eeg is not None:
             data.append(eeg)
         if len(data) == max_len:
-            print(data)
+            # print(data)
             # classify this chunk
             #------code starts here------#
-            filter(data)
+            
             data_processed = invert_data(data)
+            filter(data_processed)
+            #print(data_processed)
             peaks_1, peaks_2 = find_peak(data_processed, threshold)
             label = statistical_classification(peaks_1, peaks_2, threshold, data_processed)
             # if it returns 1, it will press the spacebar
