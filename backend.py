@@ -11,7 +11,8 @@ from pynput.keyboard import Key, Controller
 
 max_len = 180 # modify the number of samples for analysis here
 threshold_after_first_peak = 60 # how many data points do we search after the first strong peak above threshold
-threshold = 0
+subject = 'Filtered_Subject_1\Subject_1_average_threashold.csv'
+
 def mark_blink(peaks):
     """
     Applies a high pass filter to the voltage data in the dataframe.
@@ -31,6 +32,8 @@ def mark_blink(peaks):
             end = peaks[0] + max_len
         blink_times.append((start, end))
     return blink_times
+
+
 def extract_features(blink_times, time, eeg_data):
     """
     Extract different features of the peaks.
@@ -49,6 +52,8 @@ def extract_features(blink_times, time, eeg_data):
         frequency = blink[1] - blink[0]
         blink_features.append((duration, peak, frequency))
     return blink_features
+
+
 def separate_blink(blink_features):
     """
     Separate single blink from double blink.
@@ -75,23 +80,22 @@ def separate_blink(blink_features):
                 single_blink.append((duration, peak, frequency))
     return single_blink, double_blink
 
+
 # extract data from the file 
 def invert_data(data):
     # negative values become positive, while positive values become negative in channel 1 and channel 2
-    clean_data = [[], [], []]
+    clean_data = [[], []]
     for i in range(len(data)):
-        ch1 = data[i][1]
-        ch2 = data[i][2]
-        time = data[i][-2]
+        ch1 = data[i][0]
+        ch2 = data[i][1]
         clean_data[0].append(-ch1)
         clean_data[1].append(-ch2)
-        clean_data[2].append(time)
     return clean_data
 
 def find_peak(data, threshold):
-    peaks_1, _ = sig.find_peaks(data[0], height = threshold)
-    peaks_2, _ = sig.find_peaks(data[1], height = threshold)
-    print(peaks_1)
+    peaks_1, _ = sig.find_peaks(data[0], height = threshold[0])
+    peaks_2, _ = sig.find_peaks(data[1], height = threshold[1])
+    print("peaks_1 in find_peak: ", peaks_1)
     return peaks_1, peaks_2
 
 
@@ -99,11 +103,11 @@ def statistical_classification(peaks_1, peaks_2, threshold, data):
     # peaks_1, peaks_2 stores the indecies of the array, in which indecies a peak occurs
     peaks_1 = np.array(peaks_1)
     peaks_2 = np.array(peaks_2)
-    print(peaks_1)
+    print("peaks_1 in statistical_classification: ", peaks_1)
     # store the peak and its respective index into a a list of tuple
     data_ch1 = [(data[0][i], i) for i in peaks_1]
     data_ch2 = [(data[1][i], i) for i in peaks_2]
-    print(data_ch1)
+    print("data_ch1 in statistical_classification: ", data_ch1)
     # find the maximum of the the value and return index of the peak in this list of tuple
     max_ch1_idx = np.argmax(data_ch1)[0]
     max_ch2_idx = np.argmax(data_ch2)[0]
@@ -112,17 +116,33 @@ def statistical_classification(peaks_1, peaks_2, threshold, data):
     ch2_idx = data_ch2[max_ch2_idx][1]
 
     # look for the biggest peak and check the peak right after it is above threshold or not 
-    if data[ch1_idx] >= threshold:
+    if data[ch1_idx] >= threshold[0]:
         next_peak = np.argmax(data[ch1_idx : np.min(ch1_idx+threshold_after_first_peak, len(data))])
-        if data[next_peak] >= threshold:
+        if data[next_peak] >= threshold[0]:
             return 1
     # look for the biggest peak and check the peak right after it is above threshold or not 
-    if data[ch2_idx] >= threshold:
+    if data[ch2_idx] >= threshold[1]:
         next_peak = np.argmax(data[ch2_idx : np.min(ch2_idx+threshold_after_first_peak, len(data))])
-        if data[next_peak] >= threshold:
+        if data[next_peak] >= threshold[1]:
             return 1
-    
     return 0
+
+
+def filter(data):
+    # Define filter parameters
+    low_cut = 1  
+    high_cut = 5  
+    fs = 250 
+    filter_order = 8
+
+    # Calculate filter coefficients
+    nyquist_freq = 0.5 * fs
+    a = butter(filter_order, [low_cut / nyquist_freq, high_cut / nyquist_freq], btype='bandpass', output='sos') 
+    
+    data[0] = sosfiltfilt(a, data[0])
+    data[1] = sosfiltfilt(a, data[1])
+    return
+
 
 def lsl_inlet(name):
     inlet = None
@@ -141,8 +161,9 @@ def main():
     keyboard = Controller() # setup virtual keyboard
     # Wait for a marker, then start recording EEG data
     data = collections.deque(maxlen=max_len) # fast datastructure for appending/popping in either direction
-    #subject_threshold = pd.read_csv('Subject_1_average_threashold.csv')
-    #max_threshold = subject_threshold['']
+    subject_threshold = pd.read_csv(subject)
+    # threshold <- [average max-threash of channel 1, average max-threash of channel 2]
+    threshold = [-subject_threshold.iloc[0, 0], -subject_threshold.iloc[0, 1]]
     
     print('main function started')
     while True and terminate_backend == False:
@@ -154,9 +175,10 @@ def main():
             print(data)
             # classify this chunk
             #------code starts here------#
+            filter(data)
             data_processed = invert_data(data)
             peaks_1, peaks_2 = find_peak(data_processed, threshold)
-            label = statistical_classification(peaks_1, peaks_2, 250, data_processed)
+            label = statistical_classification(peaks_1, peaks_2, threshold, data_processed)
             # if it returns 1, it will press the spacebar
             if label == 1: # some function that return label of the data
                 keyboard.press(Key.space)
