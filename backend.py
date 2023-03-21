@@ -7,9 +7,8 @@ from pynput.keyboard import Key, Controller
 import offline_preprocess as ofp
 
 max_len = 375 # modify the number of samples for analysis here
-threshold_after_first_peak = 125 # how many data points do we search after the first strong peak above threshold
+threshold_after_first_peak = 150 # how many data points do we search after the first strong peak above threshold
 peak_residue_window = 0
-residue_iteration = 0
 #subject_threshold = [100, 100]
 subject = 'Filtered_Subject_4\Subject_4_average_threashold.csv'
 
@@ -65,12 +64,11 @@ def statistical_classification(peaks_1, peaks_2, data):
         int: 1 if a double eyeblink is detected, 0 otherwise.
     """
     # peaks_1, peaks_2 stores the indecies of the array, in which indecies a peak occurs
-    global peak_residue_window, residue_iteration
+    global peak_residue_window
 
     if len(peaks_1) == 0 or len(peaks_2) == 0:
+        peak_residue_window = 0
         return 0
-    if residue_iteration > 1:
-        residue_iteration = 0
     # store the peak and its respective index into a a list of tuple
     data_ch1 = np.array([(data[0][i], i) for i in peaks_1])
     data_ch2 = np.array([(data[1][i], i) for i in peaks_2])
@@ -82,29 +80,25 @@ def statistical_classification(peaks_1, peaks_2, data):
     if (len(data_ch1) == 1):
         # If the peak index is less than the peak_residue_window, it means that the peak in the
         # last epoch and the peak in the current epoch belong to one double blink.
-        # Reset the peak_residue_window, increment residue_iteration, and return 1
+        # Reset the peak_residue_window and return 1
         # (indicating a double eyeblink is detected)
-        if data_ch1[0][1] < peak_residue_window:
+        if (data_ch1[0][1] < peak_residue_window): 
             peak_residue_window = 0
-            residue_iteration += 1
             return 1
         # If the peak index is close to the end of the window, update peak_residue_window
-        # to account for the remaining peak search area, increment residue_iteration,
+        # to account for the remaining peak search area
         # and return 0 (indicating no double eyeblink is detected)
         elif data_ch1[0][1] > max_len - threshold_after_first_peak:
             peak_residue_window = data_ch1[0][1] + threshold_after_first_peak - max_len
-            residue_iteration += 1
             return 0
     # If there's only one peak in the second channel
     elif (len(data_ch2) == 1):
         # Similar logic to the first channel
-        if data_ch2[0][1] < peak_residue_window:
+        if (data_ch2[0][1] < peak_residue_window): 
             peak_residue_window = 0
-            residue_iteration += 1
             return 1
         elif data_ch2[0][1] > max_len - threshold_after_first_peak:
             peak_residue_window = data_ch2[0][1] + threshold_after_first_peak - max_len
-            residue_iteration += 1
             return 0
         
     # Iterate through the peaks in the first channel    
@@ -133,6 +127,7 @@ def filter(data):
     Returns:
         list: A list containing two filtered lists, one for each channel.
     """
+    #return [data[0], data[1]]
     filtered = ofp.high_pass(pd.DataFrame({'FP1': data[0], 'FP2': data[1]}))
     filtered = ofp.low_pass(filtered)
     return [filtered['FP1 (channel 1)'].values, filtered['FP2 (channel 2)'].values]
@@ -176,14 +171,12 @@ def main():
                 data_processed = invert_data(chunk)
                 data_processed = filter(data_processed)
                 peaks_1, peaks_2 = find_peak(data_processed, subject_threshold)
-                label = statistical_classification(peaks_1, peaks_2, subject_threshold, data_processed)
+                label = statistical_classification(peaks_1, peaks_2, data_processed)
                 # if it returns 1, it will press the spacebar
                 if label == 1: 
                     keyboard.press(Key.space)
                     keyboard.release(Key.space)  
                     print("JUMP!")
-                # otherwise do nothing
-                data = collections.deque(maxlen=max_len)
 
 # initialize variables to store stream
 eeg_in = None
