@@ -118,7 +118,7 @@ def average_min_max(data):
 def preprocess(df):
     df = df.loc[6:,:]
     data = df.iloc[:,1:3]
-    time = df.iloc[:, -2]
+    #time = df.iloc[:, -2]
 
     filtered = high_pass(data)
     filtered = low_pass(filtered)
